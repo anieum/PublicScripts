@@ -1,0 +1,89 @@
+{
+    // See https://go.microsoft.com/fwlink/?LinkId=733558
+    // for the documentation about the tasks.json format
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "echo",
+            "type": "shell",
+            "command": "echo Hello"
+        },
+
+        {
+            "label": "ghdl analyze",
+            "type": "shell",
+            "command": "wsl",
+                "args": [
+                    "--cd", "\"${fileDirname}\"",
+                    "ghdl", "-a", "${fileBasename}"
+                ],
+            "problemMatcher": [],
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            }
+        }, {
+            "label": "ghdl analyze, execute",
+            "type": "shell",
+            "command": "wsl",
+                "args": [
+                    "--cd", "\"${fileDirname}\"",
+                    "ghdl", "-a", "${fileBasename}",
+                    "'&&'",
+                    "ghdl", "-e", "${fileBasenameNoExtension}"
+                ],
+            "problemMatcher": [],
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            }
+        }, {
+            "label": "ghdl analyze, execute, simulate (Enter time!)",
+            "type": "shell",
+            "command": "wsl",
+                "args": [
+                    "--cd", "\"${fileDirname}\"",
+                    "ghdl", "-a", "${fileBasename}",
+                    "'&&'",
+                    "ghdl", "-e", "${fileBasenameNoExtension}",
+                    "'&&'",
+                    "ghdl", "-r", "${fileBasenameNoExtension}", "--stop-time=${input:timespan}", "--vcd=${fileBasenameNoExtension}.vcd"
+                ],
+            "problemMatcher": [],
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+        }, {
+            "label": "ghdl analyze, execute CURRENT & analyze, execute, simulate CURRENT_tb (Enter time!)",
+            "type": "shell",
+            "command": "wsl",
+                "args": [
+                    "--cd", "\"${fileDirname}\"",
+                    "ghdl", "-a", "${fileBasename}",
+                    "'&&'",
+                    "ghdl", "-e", "${fileBasenameNoExtension}",
+                    "'&&'",
+                    "ghdl", "-r", "${fileBasenameNoExtension}", "--stop-time=${input:timespan}", "--vcd=${fileBasenameNoExtension}.vcd",
+                    "'&&'",
+                    "ghdl", "-a", "${fileBasenameNoExtension}_tb.vhd",
+                    "'&&'",
+                    "ghdl", "-e", "${fileBasenameNoExtension}_tb",
+                    "'&&'",
+                    "ghdl", "-r", "${fileBasenameNoExtension}_tb", "--stop-time=${input:timespan}", "--vcd=${fileBasenameNoExtension}_tb.vcd"
+                ],
+            "problemMatcher": [],
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+        }
+    ], "inputs": [
+        {
+            "id": "timespan",
+            "description": "Enter simulation stop time",
+            "default": "200ns",
+            "type": "promptString"
+        },
+    ]
+}

@@ -1,0 +1,11 @@
+﻿# For documentation, see https://www.sumatrapdfreader.org/settings/settings3.2.html
+# Replace your ebook settings with this for a dark theme with a way better readable font
+
+EbookUI [
+	FontName = Minion Pro
+	FontSize = 17
+	TextColor = #d4d4d4
+	BackgroundColor = #1e1e1e
+	UseFixedPageUI = false
+	GradientColors = #000000
+]
