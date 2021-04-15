@@ -1,6 +1,5 @@
 b = document.body.style;
 b.transition = "1s";
-b.fontFamily = "Minion Pro";
 b.fontSize = "1.2rem";
 b.color = "#d4d4d4"
 i = document.getElementById("programming-exercise-instructions-content").style;
