@@ -36,8 +36,9 @@ class FormalRule {
 
         # Todo: Replace recursion with loop
         $index = $word.IndexOf($this.Premise)
+        $wordLeft = $word.Substring(0, $index+1)
         $this.Apply($word.Substring($index + 1)) | ForEach-Object {
-            [void] $Result.Add($_)
+            [void] $Result.Add($wordLeft + $_)
         }
 
         if ($tmpbefore -ne $word) {
@@ -160,6 +161,11 @@ class FormalGrammar {
 
         foreach ($Rule in $this.Rules) {
             foreach ($w in $Rule.Apply($Word)) {
+
+                if ($w -clike "aaaBBSccc") {
+                    Write-Host -Fore Red "$($Rule.Premise) -> $($Rule.Conclusion) orig word $Word"
+                }
+
                 [void]$Result.Add($w)
             }
         }
@@ -190,6 +196,8 @@ class FormalGrammar {
 
                     [void]$Iteration[$i].Add($w)
                     $Words[$w] = $i
+
+
                 }
             }
             # Write-Host -fore cyan "End foreach $i : $($Iteration[$i-1].Count)"
@@ -310,10 +318,57 @@ function Get-TerminalWords($FormalLanguage, $Words) {
 
 Set-Alias New-Grammar New-FormalGrammar
 
+function Get-UniqueFaster {
+    [CmdletBinding()]
+    param (
+        [Parameter(ValueFromPipeline=$true)]
+        $elem
+    )
 
+    begin {
+        $cache = New-Object System.Collections.Hashtable
+    }
+
+    process {
+        if ($_) {
+            $elem = $_
+        }
+
+        if (!$cache.ContainsKey($_)) {
+            $cache[$elem] = $true
+            $elem
+        }
+    }
+}
+
+
+# Working example
+# Import-Module FormalLanguageTools.psm1 -Force
 # $gr = (New-FormalGrammar "S->aBSc, Ba->aB, Bb -> bB, Bc -> bc")
-# $gr.ApplyRulesWithBruteForce("S", 10)
+# $l = $gr.GenerateLanguage(10)
+# $l | % { $gr.ApplyRulesWithBruteForce($_, $_.Length) } | % { if ($_ -eq "") {"(empty word)"} else {$_}} | Get-UniqueFaster
+
+# Output:
+# (empty word)
 # abc
 # aabbcc
-# aabbccc <---- where does this come from?
 # aaabbbccc
+# aaaabbbbcccc
+# aaaaabbbbbccccc
+
+# vs.
+# (New-FormalGrammar "S -> abcS, ba -> ab, cb -> bc, ca -> ac").GenerateLanguage(10)
+#  | % { $gr.ApplyRulesWithBruteForce($_, $_.Length) }
+#  | % { if ($_ -eq "") {"(empty word)"} else {$_}} | Get-UniqueFaster
+
+# Output:
+# (empty word)
+# abc
+# aabbcc
+# aabcbc
+# ababcc
+# abacbc
+# abcabc
+# aaabbccbc
+# aaabcbbcc
+# aababcbcc
