@@ -1,3 +1,4 @@
+# This is more experimental than working and definitely contains bugs
 class FormalRule {
     [string] $Premise
     [string] $Conclusion
@@ -21,11 +22,9 @@ class FormalRule {
 
     [System.Collections.ArrayList] Apply([string] $word) {
         $Result = New-Object System.Collections.ArrayList
-        # $replacableSymbols = $this.Premise.ToCharArray() | Where-Object { $_ -cmatch "[A-Z]" }
         $tmpbefore = $word
 
         if (!$word.Contains($this.Premise)) {
-            # Write-Host -fore yellow "Premise not found $word $($this.Premise)"
             return $result
         }
 
@@ -45,8 +44,6 @@ class FormalRule {
             Write-Host -Fore Cyan "$tmpbefore $($this.Premise) -> $($this.conclusion) $word"
         }
 
-        # todo this will fail e. g. if we have Sa -> xy and aS -> z. aS will never be applied
-        # "aSaSa" with rule aSa-> bb has to output bbSa and aSbb
 
         return $Result
     }
@@ -185,11 +182,7 @@ class FormalGrammar {
             foreach ($word in $Iteration[$i-1]) {
                 $NewWords = $this.ApplyRulesToWord($word)
 
-                # Write-Host -Fore Red "Iteration: $i, Word: $word, New words: $($NewWords.count)"
-                # $NewWords | % { Write-Host -Fore Green "$i : $_" }
-
                 foreach ($w in $NewWords) {
-                    # Write-Host -fore cyan "Add new word $i $w"
                     if ($Words.ContainsKey($w)) {
                         continue;
                     }
@@ -200,7 +193,6 @@ class FormalGrammar {
 
                 }
             }
-            # Write-Host -fore cyan "End foreach $i : $($Iteration[$i-1].Count)"
         }
 
         $Output = $Words.Keys | ForEach-Object { $_.ToString() }
@@ -211,7 +203,6 @@ class FormalGrammar {
         $result = New-Object System.Collections.ArrayList
         $NonTerminalWords = New-Object System.Collections.Queue
 
-        # POWERSHELL HASHTABLE INDICES ARE CASEINSENSITIVE! Use: System.Collections.Hashtable
         $Generated = New-Object System.Collections.Hashtable
 
         $count = 0;
@@ -243,16 +234,10 @@ class FormalGrammar {
                     continue
                 }
 
-
-
-
                 if (Test-IsTerminalWord $NewWord) {
                     # return results
                     [void]$result.Add($NewWord)
                 } else {
-                    # better than nothing
-
-
                     [void] $NonTerminalWords.Enqueue($NewWord)
                 }
             }
@@ -295,7 +280,7 @@ function Get-TerminalWords($FormalLanguage, $Words) {
             foreach ($NewWord in $rule.Apply($w)) {
                 Write-Host -Fore red $NewWord
 
-                # Warning/Bug: has to be rule depentend.
+                # Warning/Bug: has to be rule dependend or we prune possible words
                 if ($Generated.ContainsKey($NewWord)) {
                     continue
                 } else {
