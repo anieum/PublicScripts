@@ -22,11 +22,13 @@ class FormalRule {
     [System.Collections.ArrayList] Apply([string] $word) {
         $Result = New-Object System.Collections.ArrayList
         # $replacableSymbols = $this.Premise.ToCharArray() | Where-Object { $_ -cmatch "[A-Z]" }
+        $tmpbefore = $word
 
         if (!$word.Contains($this.Premise)) {
             # Write-Host -fore yellow "Premise not found $word $($this.Premise)"
             return $result
         }
+
 
         $regex = [regex]::new([regex]::Escape($this.Premise))
         [void]$Result.Add($regex.Replace($word, $this.Conclusion, 1))
@@ -38,6 +40,9 @@ class FormalRule {
             [void] $Result.Add($_)
         }
 
+        if ($tmpbefore -ne $word) {
+            Write-Host -Fore Cyan "$tmpbefore $($this.Premise) -> $($this.conclusion) $word"
+        }
 
         # todo this will fail e. g. if we have Sa -> xy and aS -> z. aS will never be applied
         # "aSaSa" with rule aSa-> bb has to output bbSa and aSbb
@@ -133,8 +138,8 @@ class FormalGrammar {
     }
 
     static [FormalGrammar] CreateFromRules($Rules) {
-        $lower = @{}
-        $upper = @{}
+        $lower = New-Object System.Collections.Hashtable
+        $upper = New-Object System.Collections.Hashtable
         $upper["S"] = 1
 
         $Rules | ForEach-Object {
@@ -163,8 +168,8 @@ class FormalGrammar {
     }
 
     [string[]] GenerateLanguage([int] $steps = 5) {
-        $Words = @{}
-        $Iteration = @{}
+        $Words = New-Object System.Collections.Hashtable
+        $Iteration = New-Object System.Collections.Hashtable
 
         $Words[$this.StartSymbol] = 0
         $Iteration[0] = @($this.StartSymbol)
@@ -193,7 +198,63 @@ class FormalGrammar {
         $Output = $Words.Keys | ForEach-Object { $_.ToString() }
         return $Output | Sort-Object -Property { $_.length }, { $_ }
     }
+
+    [System.Collections.ArrayList] ApplyRulesWithBruteForce($Word, $MaxLength) {
+        $result = New-Object System.Collections.ArrayList
+        $NonTerminalWords = New-Object System.Collections.Queue
+
+        # POWERSHELL HASHTABLE INDICES ARE CASEINSENSITIVE! Use: System.Collections.Hashtable
+        $Generated = New-Object System.Collections.Hashtable
+
+        $count = 0;
+
+        if (-not $MaxLength) {
+            $MaxLength = $Word.Length + 5
+        }
+
+        [void]$NonTerminalWords.Enqueue($word)
+
+        while ($NonTerminalWords.Count -gt 0) {
+            $currentWord = $NonTerminalWords.Dequeue()
+
+            if ($Generated.ContainsKey($currentWord)) {
+                continue;
+            } else {
+                $Generated[$currentWord] = $true
+            }
+
+
+            foreach ($NewWord in $this.ApplyRulesToWord($currentWord)) {
+                $count++
+
+                if ($count % 1000 -eq 0) {
+                    Write-Host -Fore yellow "Generated $count words. So far $($result.count) (non-unique) terminal words"
+                }
+
+                if ($NewWord.Length -gt $MaxLength) {
+                    continue
+                }
+
+
+
+
+                if (Test-IsTerminalWord $NewWord) {
+                    # return results
+                    [void]$result.Add($NewWord)
+                } else {
+                    # better than nothing
+
+
+                    [void] $NonTerminalWords.Enqueue($NewWord)
+                }
+            }
+        }
+
+        return $result
+    }
 }
+
+
 
 function Test-IsTerminalWord {
     param (
@@ -203,12 +264,15 @@ function Test-IsTerminalWord {
     return -not ($word -cmatch "[A-Z]")
 }
 
+
 # Temp for debug purposes
 function Get-TerminalWords($FormalLanguage, $Words) {
     # Bug: Some terminal rules need a nonterminal rule applied first, before they become applicable
+    # Doing this right would require a searchtree which probably would need some optimizations
+    # Alternatively just bruteforce it and
     $TerminalRules = $FormalLanguage.Rules | Where-Object { -not ($_.Conclusion -cmatch "[A-Z]") -or $_.Conclusion -eq "" }
     $TerminalWords = New-Object System.Collections.ArrayList
-    $Generated = @{}
+    $Generated = New-Object System.Collections.Hashtable
 
     $NonTerminalWords = New-Object System.Collections.Queue
 
@@ -223,6 +287,7 @@ function Get-TerminalWords($FormalLanguage, $Words) {
             foreach ($NewWord in $rule.Apply($w)) {
                 Write-Host -Fore red $NewWord
 
+                # Warning/Bug: has to be rule depentend.
                 if ($Generated.ContainsKey($NewWord)) {
                     continue
                 } else {
@@ -244,3 +309,11 @@ function Get-TerminalWords($FormalLanguage, $Words) {
 }
 
 Set-Alias New-Grammar New-FormalGrammar
+
+
+# $gr = (New-FormalGrammar "S->aBSc, Ba->aB, Bb -> bB, Bc -> bc")
+# $gr.ApplyRulesWithBruteForce("S", 10)
+# abc
+# aabbcc
+# aabbccc <---- where does this come from?
+# aaabbbccc
