@@ -4,11 +4,11 @@ class FormalRule {
 
     FormalRule ([string] $Premise, [string] $Conclusion) {
         $this.Premise = $Premise
-        $this.Conclusion = $Conclusion.ToCharArray()
+        $this.Conclusion = $Conclusion
     }
 
     static [FormalRule] CreateFrom([string] $Text) {
-        if (-not $Text -match "\S*\s*->\s*\S*") {
+        if (-not ($Text -match "\S*\s*->\s*\S*")) {
             throw "Wrong format for formal rule."
         }
 
@@ -17,24 +17,30 @@ class FormalRule {
         return [FormalRule]::new($parts[0].Trim(), $parts[1].Trim())
     }
 
+
+
     [System.Collections.ArrayList] Apply([string] $word) {
         $Result = New-Object System.Collections.ArrayList
+        # $replacableSymbols = $this.Premise.ToCharArray() | Where-Object { $_ -cmatch "[A-Z]" }
 
-        foreach ($char in $this.Premise) {
-            if ($word -notcontains $char) {
-                continue;
-            }
-
-            $regex = [regex]::new([regex]::Escape($char))
-
-            $w = $word
-
-            do {
-                $wl = $w
-                $w = $regex.Replace($word, $this.Conclusion, 1)
-                [void]$Result.Add($w)
-            } while ($wl -ne $w)
+        if (!$word.Contains($this.Premise)) {
+            # Write-Host -fore yellow "Premise not found $word $($this.Premise)"
+            return $result
         }
+
+        $regex = [regex]::new([regex]::Escape($this.Premise))
+        [void]$Result.Add($regex.Replace($word, $this.Conclusion, 1))
+
+
+        # Todo: Replace recursion with loop
+        $index = $word.IndexOf($this.Premise)
+        $this.Apply($word.Substring($index + 1)) | ForEach-Object {
+            [void] $Result.Add($_)
+        }
+
+
+        # todo this will fail e. g. if we have Sa -> xy and aS -> z. aS will never be applied
+        # "aSaSa" with rule aSa-> bb has to output bbSa and aSbb
 
         return $Result
     }
@@ -94,7 +100,7 @@ function New-FormalGrammar {
     )
 
     end {
-        if ($rules -contains "\n") {
+        if ($rules.Contains("\n")) {
             $Seperator = "\r\n"
         } else {
             $Seperator = ", "
@@ -121,6 +127,9 @@ class FormalGrammar {
         $Variables | ForEach-Object { [void]$this.Variables.Add($_.ToString()) }
         $Terminals | ForEach-Object { [void]$this.Terminals.Add($_.ToString()) }
         $Rules | ForEach-Object { [void]$this.Rules.Add($_) }
+
+        #Add terminal rule
+        [void]$this.Rules.Add([FormalRule]::new($StartSymbol, ""))
     }
 
     static [FormalGrammar] CreateFromRules($Rules) {
@@ -155,37 +164,83 @@ class FormalGrammar {
 
     [string[]] GenerateLanguage([int] $steps = 5) {
         $Words = @{}
-        $Words[$this.StartSymbol] = 0
-
         $Iteration = @{}
-        $Iteration[0] = @("S")
+
+        $Words[$this.StartSymbol] = 0
+        $Iteration[0] = @($this.StartSymbol)
 
         for ($i = 1; $i -le $steps; $i++) {
-            foreach ($word in $Iteration[$i]) {
+            $Iteration[$i] = New-Object System.Collections.ArrayList
+            foreach ($word in $Iteration[$i-1]) {
                 $NewWords = $this.ApplyRulesToWord($word)
-                $Iteration[$i] = New-Object System.Collections.ArrayList
+
+                # Write-Host -Fore Red "Iteration: $i, Word: $word, New words: $($NewWords.count)"
+                # $NewWords | % { Write-Host -Fore Green "$i : $_" }
 
                 foreach ($w in $NewWords) {
-                    if ($null -ne $Words[$w]) {
+                    # Write-Host -fore cyan "Add new word $i $w"
+                    if ($Words.ContainsKey($w)) {
                         continue;
                     }
 
                     [void]$Iteration[$i].Add($w)
                     $Words[$w] = $i
                 }
-
-                if($Iteration[$i].Count -eq 0) {
-                    break
-                }
             }
+            # Write-Host -fore cyan "End foreach $i : $($Iteration[$i-1].Count)"
         }
 
         $Output = $Words.Keys | ForEach-Object { $_.ToString() }
-        return $Output | Sort-Object -Property { $_.length }
+        return $Output | Sort-Object -Property { $_.length }, { $_ }
     }
 }
 
-Set-Alias New-Grammar New-FormalGrammar
+function Test-IsTerminalWord {
+    param (
+        [string] $word
+    )
 
-$x = New-FormalGrammar "S->b"
-$x.Generate(5)
+    return -not ($word -cmatch "[A-Z]")
+}
+
+# Temp for debug purposes
+function Get-TerminalWords($FormalLanguage, $Words) {
+    # Bug: Some terminal rules need a nonterminal rule applied first, before they become applicable
+    $TerminalRules = $FormalLanguage.Rules | Where-Object { -not ($_.Conclusion -cmatch "[A-Z]") -or $_.Conclusion -eq "" }
+    $TerminalWords = New-Object System.Collections.ArrayList
+    $Generated = @{}
+
+    $NonTerminalWords = New-Object System.Collections.Queue
+
+    foreach ($w in $Words) {
+        [void] $NonTerminalWords.Enqueue($w)
+    }
+
+    while ($NonTerminalWords.Count -gt 0) {
+        $w = $NonTerminalWords.Dequeue()
+
+        foreach ($rule in $TerminalRules) {
+            foreach ($NewWord in $rule.Apply($w)) {
+                Write-Host -Fore red $NewWord
+
+                if ($Generated.ContainsKey($NewWord)) {
+                    continue
+                } else {
+                    $Generated[$NewWord] = $true
+                }
+
+
+                if (Test-IsTerminalWord $NewWord) {
+                    [void]$TerminalWords.Add($NewWord)
+                } else {
+                    [void]$NonTerminalWords.Enqueue($NewWord)
+                }
+
+            }
+        }
+    }
+
+    return $TerminalWords
+}
+
+Set-Alias New-Grammar New-FormalGrammar
