@@ -527,6 +527,8 @@ function Get-LastGrammar([FormalGrammar] $Grammar) {
 
 
 # Notes ------------------------------------------------------------------
+# TODO: Make output into custom objects and add history which rules where used in which order
+
 # These things currently work:
 
 # Import-Module FormalLanguageTools.psm1 -Force
