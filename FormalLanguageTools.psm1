@@ -1,4 +1,4 @@
-# This is more experimental than working and definitely contains bugs
+# This is more experimental than working and probably contains bugs
 class FormalRule {
     [string] $Premise
     [string] $Conclusion
@@ -7,18 +7,6 @@ class FormalRule {
         $this.Premise = $Premise
         $this.Conclusion = $Conclusion
     }
-
-    static [FormalRule] CreateFrom([string] $Text) {
-        if (-not ($Text -match "\S*\s*->\s*\S*")) {
-            throw "Wrong format for formal rule."
-        }
-
-        $parts = $text -split "->"
-
-        return [FormalRule]::new($parts[0].Trim(), $parts[1].Trim())
-    }
-
-
 
     [System.Collections.ArrayList] Apply([string] $word) {
         $Result = New-Object System.Collections.ArrayList
@@ -51,69 +39,6 @@ class FormalRule {
 
 }
 
-
-
-function ConvertFrom-StringToFormalRule {
-    param (
-        [Parameter(Mandatory=$true, ValueFromPipeline=$true)]
-        [string]
-        $text
-    )
-
-    process {
-        if ($_) {
-            $text = $_
-        }
-
-        [FormalRule]::CreateFrom($text);
-    }
-
-}
-
-function New-FormalRule([string] $Premise, [string] $Conclusion)  {
-    [FormalRule]::new($Premise, $Conclusion)
-}
-
-<#
- .Synopsis
-  Creates a new grammar.
-
- .Description
-  Creates a new grammar either by simply stating its rules (uppercase letters as variables and lowercase letters
-  as terminal symbols) or by entering the 4 tuple G(V, E, P, S)
-
-  S is by default the start symbol
-  e is by default the empty word
-
- .Parameter Start
-  The first month to display.
-
- .Example
-   # Create a grammar simply by stating its rules
-   # note: that e is reserved for epsilon - the empty word
-
-   New-Grammar S -> aBSc|e, Ba -> ab, Bb -> bB, Bc -> bc
-#>
-function New-FormalGrammar {
-    [CmdletBinding()]
-    param (
-        [Parameter(Mandatory=$true, ValueFromPipeline=$true)]
-        [string]
-        $rules
-    )
-
-    end {
-        if ($rules.Contains("\n")) {
-            $Seperator = "\r\n"
-        } else {
-            $Seperator = ", "
-        }
-
-        $ParsedRules = $rules -split $Seperator | ForEach-Object { $_.Trim() } | ConvertFrom-StringToFormalRule
-
-        [FormalGrammar]::CreateFromRules($ParsedRules)
-    }
-}
 
 class FormalGrammar {
     [System.Collections.ArrayList] $Variables
@@ -158,11 +83,6 @@ class FormalGrammar {
 
         foreach ($Rule in $this.Rules) {
             foreach ($w in $Rule.Apply($Word)) {
-
-                if ($w -clike "aaaBBSccc") {
-                    Write-Host -Fore Red "$($Rule.Premise) -> $($Rule.Conclusion) orig word $Word"
-                }
-
                 [void]$Result.Add($w)
             }
         }
@@ -189,8 +109,6 @@ class FormalGrammar {
 
                     [void]$Iteration[$i].Add($w)
                     $Words[$w] = $i
-
-
                 }
             }
         }
@@ -199,7 +117,7 @@ class FormalGrammar {
         return $Output | Sort-Object -Property { $_.length }, { $_ }
     }
 
-    [System.Collections.ArrayList] ApplyRulesWithBruteForce($Word, $MaxLength) {
+    [System.Collections.ArrayList] ApplyRulesWithBruteForce($Word, $MaxLength, $MaxTries) {
         $result = New-Object System.Collections.ArrayList
         $NonTerminalWords = New-Object System.Collections.Queue
 
@@ -226,9 +144,15 @@ class FormalGrammar {
             foreach ($NewWord in $this.ApplyRulesToWord($currentWord)) {
                 $count++
 
-                if ($count % 1000 -eq 0) {
-                    Write-Host -Fore yellow "Generated $count words. So far $($result.count) (non-unique) terminal words"
+                if ($count -eq $MaxTries) {
+                    Write-Host -ForegroundColor Yellow "Generated $count words. Ending search."
                 }
+
+                if ($count % 1000 -eq 0) {
+                    Write-Verbose "Generated $count words. So far $($result.count) terminal words (including duplicates)"
+                }
+
+
 
                 if ($NewWord.Length -gt $MaxLength) {
                     continue
@@ -249,6 +173,63 @@ class FormalGrammar {
 
 
 
+<#
+ .Synopsis
+  Creates a new grammar.
+
+ .Description
+  Creates a new grammar either by simply stating its rules (uppercase letters as variables and lowercase letters
+  as terminal symbols) or by entering the 4 tuple G(V, E, P, S)
+
+  S is by default the start symbol
+  e is by default the empty word
+
+ .Parameter Start
+  The first month to display.
+
+ .Example
+   # Create a grammar simply by stating its rules
+   # note: that e is reserved for epsilon - the empty word
+
+   New-Grammar S -> aBSc|e, Ba -> ab, Bb -> bB, Bc -> bc
+#>
+function New-FormalGrammar {
+    [CmdletBinding()]
+    param (
+        [Parameter(Mandatory=$true, ValueFromPipeline=$true)]
+        $Rules
+    )
+
+    begin {
+        $CollectedRules = New-Object System.Collections.ArrayList
+    }
+
+    process {
+        if ($_) {
+            [void] $CollectedRules.Add($_)
+        }
+    }
+
+    end {
+        if ($CollectedRules.Count -gt 0) {
+            $Rules = $CollectedRules
+        }
+
+        $ParsedRules = $Rules | Foreach-Object {
+            if ($_ -is [string]) {
+                $_ | ConvertTo-FormalGrammarRules
+            } else {
+                $_
+            }
+        }
+
+        $Grammar = [FormalGrammar]::CreateFromRules($ParsedRules)
+        Set-LastGrammar $Grammar
+        $Grammar
+    }
+}
+
+
 function Test-IsTerminalWord {
     param (
         [string] $word
@@ -259,6 +240,9 @@ function Test-IsTerminalWord {
 
 
 # Temp for debug purposes
+# Do not use this
+<#
+TODO
 function Get-TerminalWords($FormalLanguage, $Words) {
     # Bug: Some terminal rules need a nonterminal rule applied first, before they become applicable
     # Doing this right would require a searchtree which probably would need some optimizations
@@ -300,10 +284,11 @@ function Get-TerminalWords($FormalLanguage, $Words) {
 
     return $TerminalWords
 }
+#>
 
-Set-Alias New-Grammar New-FormalGrammar
 
-function Get-UniqueFaster {
+
+function Get-UniqueInstant {
     [CmdletBinding()]
     param (
         [Parameter(ValueFromPipeline=$true)]
@@ -325,6 +310,170 @@ function Get-UniqueFaster {
         }
     }
 }
+
+
+
+
+function ConvertTo-FormalGrammarRules {
+    [CmdletBinding()]
+    param (
+        [Parameter(ValueFromPipeline=$true, Mandatory=$true)]
+        $Rules
+    )
+
+    process {
+        if (-not ($_ -is [string])) {
+            $Props = $_ | Get-Member -MemberType Properties | Select-Object -ExpandProperty Name
+
+            if ($_ -contains "Conclusion" -and $_ -contains "Premise") {
+                $_
+                return
+            }
+        }
+
+        if (-not $_) {
+            $Rules | ConvertTo-FormalGrammarRules
+            return
+        }
+
+        $Rule = $_.ToString()
+
+        $Separators = @(",", ";", "`r`n", "`n")
+
+        foreach ($Sep in $Separators) {
+            if ($Rule.Contains($Sep)) {
+                # if rules are given as a single string, split it and pass it again to the function
+                $Rule -split $Sep | ForEach-Object {
+                    $_.Trim()
+                } | Where-Object {
+                    $_
+                } | ConvertTo-FormalGrammarRules
+
+                return
+            }
+        }
+
+        if (-not $Rule.Contains("->")) {
+            Write-Error "Cannot parse rule: $Rule"
+            return
+        }
+
+        $tmp = $Rule -split "->" | ForEach-Object { $_.Trim() }
+
+        New-FormalGrammarRule -Premise $tmp[0] -Conclusion $tmp[1]
+    }
+}
+
+function New-FormalGrammarRule {
+    [CmdletBinding()]
+    param (
+        [string]
+        $Premise,
+
+        [string]
+        $Conclusion
+    )
+
+    [FormalRule]::new($Premise.Trim(), $Conclusion.Trim())
+}
+
+function Get-FormalLanguageWords {
+    [CmdletBinding()]
+    param (
+        # The grammar to create words from
+        [Parameter(ValueFromPipeline=$true)]
+        [FormalGrammar]
+        $Grammar,
+
+        $Iterations = 5,
+
+        [switch]
+        $IncludeSteps
+    )
+
+    begin {
+        if ($IncludeSteps) {
+            Write-Host -ForegroundColor Yellow "Sorry this is not implemented yet"
+        }
+        Write-Host "B"
+        if(!$Grammar) {
+            $Grammar = Get-LastGrammar
+        }
+    }
+
+    process {
+        $Grammar.GenerateLanguage($Iterations)
+    }
+}
+
+function Find-TerminalWord {
+    [CmdletBinding()]
+    param (
+        [Parameter(ValueFromPipeline=$true)]
+        [string]
+        $NonTerminalWord,
+
+        [FormalGrammar]
+        $Grammar,
+
+        $MaxAdditionLength = 3,
+
+        $MaxTries = 10000,
+
+        [switch]
+        $IncludeSteps,
+
+        [switch]
+        $IncludeDuplicates
+    )
+
+    begin {
+        Write-Host "A"
+        if ($IncludeSteps) {
+            Write-Host -ForegroundColor Yellow "Sorry this is not implemented yet"
+        }
+
+        if(!$Grammar) {
+            $Grammar = Get-LastGrammar
+        }
+    }
+
+    process {
+        if ($IncludeDuplicates) {
+            $Grammar.ApplyRulesWithBruteForce($NonTerminalWord, $NonTerminalWord.Length + $MaxAdditionLength, $MaxTries)
+        } else {
+            $Grammar.ApplyRulesWithBruteForce($NonTerminalWord, $NonTerminalWord.Length + $MaxAdditionLength, $MaxTries) | Get-UniqueInstant
+        }
+    }
+
+    end {
+
+    }
+}
+
+Write-Verbose "If not specified, the last used/created grammar will be used for all cmdlets!" -Verbose
+
+function Set-LastGrammar([FormalGrammar] $Grammar) {
+    $Global:FormalLanguageToolsLastLanguage = $Grammar
+}
+
+
+function Get-LastGrammar([FormalGrammar] $Grammar) {
+    if ($Global:FormalLanguageToolsLastLanguage) {
+        $Global:FormalLanguageToolsLastLanguage
+    } else {
+        throw "No grammar found. Use New-FormalGrammar to create a new one."
+    }
+}
+
+
+
+# "S -> abc, S -> aXbc, Xb -> bX, Xc -> Ybcc, bY -> Yb, aY -> aa, aY -> aaX"
+#  | ConvertTo-FormalGrammarRules
+#  | New-FormalGrammar
+#  | Get-WordsFromFormalGrammar -Iterations 10 -IncludeSteps
+#  | ConvertTo-TerminalWord -Brutforce 10 -IncludeSteps
+#  | Get-UniqueFast
 
 
 # Working example
@@ -357,3 +506,9 @@ function Get-UniqueFaster {
 # aaabbccbc
 # aaabcbbcc
 # aababcbcc
+
+# Set aliases for cmdlets
+Set-Alias New-Grammar                   New-FormalGrammar
+Set-Alias Get-WordsFromGrammar          Get-FormalLanguageWords
+Set-Alias Get-Words                     Get-FormalLanguageWords
+Set-Alias ConvertTo-FormalLanguageRules ConvertTo-FormalGrammarRules
