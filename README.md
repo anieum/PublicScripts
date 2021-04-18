@@ -9,6 +9,8 @@ FormalLanguageTools is a powershell module that allows you to define formal lang
 
 ### Usage
 ``` powershell
+Import-Module FormalLanguageTools.psm1
+
 "S->aBSc, Ba->aB, Bb -> bB, Bc -> bc" | ConvertTo-FormalLanguageRules |
     New-FormalGrammar | Get-FormalLanguageWords -Iterations 5 | Find-TerminalWord
 ```
