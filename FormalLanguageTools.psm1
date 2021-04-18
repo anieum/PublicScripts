@@ -1,4 +1,6 @@
 # This is more experimental than working and probably contains bugs
+
+# Classes ------------------------------------------------------------------
 class FormalRule {
     [string] $Premise
     [string] $Conclusion
@@ -52,12 +54,39 @@ class FormalGrammar {
         $this.Rules = New-Object System.Collections.ArrayList
         $this.StartSymbol = $StartSymbol
 
-        $Variables | ForEach-Object { [void]$this.Variables.Add($_.ToString()) }
-        $Terminals | ForEach-Object { [void]$this.Terminals.Add($_.ToString()) }
-        $Rules | ForEach-Object { [void]$this.Rules.Add($_) }
+        if ($Variables) {
+            $Variables | ForEach-Object { [void]$this.Variables.Add($_.ToString()) }
+        }
+
+        if ($Terminals) {
+            $Terminals | ForEach-Object { [void]$this.Terminals.Add($_.ToString()) }
+        }
+
+        if ($Rules) {
+            $Rules | ForEach-Object { [void]$this.Rules.Add($_) }
+        }
 
         #Add terminal rule
         [void]$this.Rules.Add([FormalRule]::new($StartSymbol, ""))
+    }
+
+    [void] AddRuleAutoVariables($Rule) {
+        # Adds a rule and automatically assumes capital letters to be variables and lower letters to be terminals
+        $Rule.Premise, $Rule.Conclusion | ForEach-Object {
+            $_.ToCharArray() | ForEach-Object {
+                if ($_ -cmatch "[a-z]") {
+                    if ($this.Terminals -notcontains $_) {
+                        [void]$this.Terminals.Add($_)
+                    }
+                } else {
+                    if ($this.Variables -notcontains $_) {
+                        [void]$this.Variables.Add($_)
+                    }
+                }
+            }
+        }
+
+        [void]$this.Rules.Add($Rule)
     }
 
     static [FormalGrammar] CreateFromRules($Rules) {
@@ -171,7 +200,7 @@ class FormalGrammar {
     }
 }
 
-
+# Functions ------------------------------------------------------------------
 
 <#
  .Synopsis
@@ -191,7 +220,26 @@ class FormalGrammar {
    # Create a grammar simply by stating its rules
    # note: that e is reserved for epsilon - the empty word
 
-   New-Grammar S -> aBSc|e, Ba -> ab, Bb -> bB, Bc -> bc
+   New-Grammar "S -> aBSc|e, Ba -> ab, Bb -> bB, Bc -> bc"
+
+  .EXAMPLE
+  # Convert string to rules, than create a new grammar from that rules and finally generate some words and apply the
+  # rules till any terminal words using the rules are found. (Find-TerminalWord does not apply rules that will cuase the
+  # new word to be longer than the old one, if not specified otherwise)
+
+  "S->aBSc, Ba->aB, Bb -> bB, Bc -> bc" | ConvertTo-FormalLanguageRules | New-FormalGrammar |
+    Get-FormalLanguageWords -Iterations 5 | Find-TerminalWord
+
+
+  .EXAMPLE
+  # See the example above. Here the additional iterations when generating will mean we have more initial words.
+  # In the process to find terminal words an additional length of 10 of the generated words is allowed.
+  # Decrease these numbers if it takes too long.
+
+  # "S -> abc, S -> aXbc, Xb -> bX, Xc -> Ybcc, bY -> Yb, aY -> aa, aY -> aaX" |
+  #   ConvertTo-FormalLanguageRules | New-FormalGrammar | Get-FormalLanguageWords -Iterations 15 |
+  #   Find-TerminalWord -MaxAdditionLength 10
+
 #>
 function New-FormalGrammar {
     [CmdletBinding()]
@@ -202,29 +250,29 @@ function New-FormalGrammar {
 
     begin {
         $CollectedRules = New-Object System.Collections.ArrayList
+
+        $Grammar = [FormalGrammar]::new($null, $null, $null, "S")
+        Set-LastGrammar $Grammar
     }
 
     process {
         if ($_) {
             [void] $CollectedRules.Add($_)
         }
+
+        $Rule = $null;
+        if ($_ -is [string]) {
+            $Rule = $_ | ConvertTo-FormalGrammarRules
+        } else {
+            $Rule = $_
+        }
+
+        $Rule | ForEach-Object {
+            $Grammar.AddRuleAutoVariables($_)
+        }
     }
 
     end {
-        if ($CollectedRules.Count -gt 0) {
-            $Rules = $CollectedRules
-        }
-
-        $ParsedRules = $Rules | Foreach-Object {
-            if ($_ -is [string]) {
-                $_ | ConvertTo-FormalGrammarRules
-            } else {
-                $_
-            }
-        }
-
-        $Grammar = [FormalGrammar]::CreateFromRules($ParsedRules)
-        Set-LastGrammar $Grammar
         $Grammar
     }
 }
@@ -304,7 +352,7 @@ function Get-UniqueInstant {
             $elem = $_
         }
 
-        if (!$cache.ContainsKey($_)) {
+        if (!$cache.ContainsKey($elem)) {
             $cache[$elem] = $true
             $elem
         }
@@ -395,7 +443,7 @@ function Get-FormalLanguageWords {
         if ($IncludeSteps) {
             Write-Host -ForegroundColor Yellow "Sorry this is not implemented yet"
         }
-        Write-Host "B"
+
         if(!$Grammar) {
             $Grammar = Get-LastGrammar
         }
@@ -421,14 +469,13 @@ function Find-TerminalWord {
         $MaxTries = 10000,
 
         [switch]
-        $IncludeSteps,
+        $IncludeSteps = $false,
 
         [switch]
-        $IncludeDuplicates
+        $IncludeDuplicates = $false
     )
 
     begin {
-        Write-Host "A"
         if ($IncludeSteps) {
             Write-Host -ForegroundColor Yellow "Sorry this is not implemented yet"
         }
@@ -436,14 +483,25 @@ function Find-TerminalWord {
         if(!$Grammar) {
             $Grammar = Get-LastGrammar
         }
+
+
+        $cache = New-Object System.Collections.Hashtable
+
     }
 
     process {
-        if ($IncludeDuplicates) {
-            $Grammar.ApplyRulesWithBruteForce($NonTerminalWord, $NonTerminalWord.Length + $MaxAdditionLength, $MaxTries)
-        } else {
-            $Grammar.ApplyRulesWithBruteForce($NonTerminalWord, $NonTerminalWord.Length + $MaxAdditionLength, $MaxTries) | Get-UniqueInstant
+        foreach ($elem in $Grammar.ApplyRulesWithBruteForce($NonTerminalWord, $NonTerminalWord.Length + $MaxAdditionLength, $MaxTries)) {
+            if (!$IncludeDuplicates -and !$cache.ContainsKey($elem)) {
+                $cache[$elem] = $true
+                $elem
+            }
+
+            if ($IncludeDuplicates) {
+                $elem
+            }
         }
+
+
     }
 
     end {
@@ -468,46 +526,37 @@ function Get-LastGrammar([FormalGrammar] $Grammar) {
 
 
 
-# "S -> abc, S -> aXbc, Xb -> bX, Xc -> Ybcc, bY -> Yb, aY -> aa, aY -> aaX"
-#  | ConvertTo-FormalGrammarRules
-#  | New-FormalGrammar
-#  | Get-WordsFromFormalGrammar -Iterations 10 -IncludeSteps
-#  | ConvertTo-TerminalWord -Brutforce 10 -IncludeSteps
-#  | Get-UniqueFast
+# Notes ------------------------------------------------------------------
+# These things currently work:
 
-
-# Working example
 # Import-Module FormalLanguageTools.psm1 -Force
-# $gr = (New-FormalGrammar "S->aBSc, Ba->aB, Bb -> bB, Bc -> bc")
-# $l = $gr.GenerateLanguage(10)
-# $l | % { $gr.ApplyRulesWithBruteForce($_, $_.Length) } | % { if ($_ -eq "") {"(empty word)"} else {$_}} | Get-UniqueFaster
+# "S->aBSc, Ba->aB, Bb -> bB, Bc -> bc" | ConvertTo-FormalLanguageRules | New-FormalGrammar |
+#   Get-FormalLanguageWords -Iterations 5 | Find-TerminalWord
 
 # Output:
-# (empty word)
+#
 # abc
 # aabbcc
 # aaabbbccc
 # aaaabbbbcccc
 # aaaaabbbbbccccc
+# aaaaaabbbbbbcccccc
 
-# vs.
-# (New-FormalGrammar "S -> abcS, ba -> ab, cb -> bc, ca -> ac").GenerateLanguage(10)
-#  | % { $gr.ApplyRulesWithBruteForce($_, $_.Length) }
-#  | % { if ($_ -eq "") {"(empty word)"} else {$_}} | Get-UniqueFaster
+# "S -> abc, S -> aXbc, Xb -> bX, Xc -> Ybcc, bY -> Yb, aY -> aa, aY -> aaX" |
+#   ConvertTo-FormalLanguageRules | New-FormalGrammar | Get-FormalLanguageWords -Iterations 15 |
+#   Find-TerminalWord -MaxAdditionLength 10
 
 # Output:
-# (empty word)
+#
 # abc
 # aabbcc
-# aabcbc
-# ababcc
-# abacbc
-# abcabc
-# aaabbccbc
-# aaabcbbcc
-# aababcbcc
+# aaabbbccc
+# aaaabbbbcccc
+# aaaaabbbbbccccc
+# aaaaaabbbbbbcccccc
+# aaaaaaabbbbbbbccccccc
 
-# Set aliases for cmdlets
+# Aliases ------------------------------------------------------------------
 Set-Alias New-Grammar                   New-FormalGrammar
 Set-Alias Get-WordsFromGrammar          Get-FormalLanguageWords
 Set-Alias Get-Words                     Get-FormalLanguageWords
